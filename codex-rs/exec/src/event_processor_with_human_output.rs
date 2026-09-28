@@ -65,6 +65,10 @@ impl EventProcessorWithHumanOutput {
         }
     }
 
+    pub(crate) fn final_message(&self) -> Option<&str> {
+        self.final_message.as_deref()
+    }
+
     fn render_item_started(&self, item: &ThreadItem) {
         match item {
             ThreadItem::CommandExecution { command, cwd, .. } => {
@@ -209,6 +213,10 @@ impl EventProcessorWithHumanOutput {
 }
 
 impl EventProcessor for EventProcessorWithHumanOutput {
+    fn final_message(&self) -> Option<&str> {
+        self.final_message()
+    }
+
     fn print_config_summary(
         &mut self,
         config: &Config,

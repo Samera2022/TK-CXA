@@ -603,6 +603,10 @@ impl EventProcessorWithJsonOutput {
 }
 
 impl EventProcessor for EventProcessorWithJsonOutput {
+    fn final_message(&self) -> Option<&str> {
+        self.final_message()
+    }
+
     fn print_config_summary(
         &mut self,
         _: &Config,

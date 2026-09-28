@@ -48,6 +48,7 @@ codex-worktree = { workspace = true }
 owo-colors = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+reqwest = { workspace = true, features = ["json", "rustls-tls"] }
 supports-color = { workspace = true }
 tokio = { workspace = true, features = [
     "io-std",

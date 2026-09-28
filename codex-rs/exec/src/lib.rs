@@ -614,6 +614,8 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         build_config,
     )
     .await?;
+    load_ccr_mcp_servers(&mut config).await;
+    sync_ccr_skills(&config).await;
     embedded_network_policy.activate(&mut config);
     let resume_approvals_reviewer_override = cli_kv_overrides
         .iter()
@@ -753,6 +755,137 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
     })
     .instrument(exec_span)
     .await
+}
+
+/// Merge enabled, non-secret remote MCP definitions published by CCR.
+///
+/// The bridge is deliberately opt-in through `CCR_BASE_URL`; malformed or
+/// unavailable CCR configuration never prevents Codex from starting with its
+/// normal local configuration. API keys are not accepted from this endpoint.
+async fn load_ccr_mcp_servers(config: &mut Config) {
+    let Some(base_url) = std::env::var_os("CCR_BASE_URL") else {
+        return;
+    };
+    let base_url = base_url.to_string_lossy().trim_end_matches('/').to_owned();
+    if base_url.is_empty() {
+        return;
+    }
+    let endpoint = format!("{base_url}/__ccr/integrations/v1");
+    let client = reqwest::Client::new();
+    let request = client.get(endpoint);
+    let request = match std::env::var("CCR_TOKEN") {
+        Ok(token) if !token.trim().is_empty() => request.bearer_auth(token),
+        _ => request,
+    };
+    let response = match request.send().await {
+        Ok(response) if response.status().is_success() => response,
+        Ok(response) => {
+            tracing::warn!(status = %response.status(), "CCR integrations request failed");
+            return;
+        }
+        Err(error) => {
+            tracing::warn!(%error, "CCR integrations request failed");
+            return;
+        }
+    };
+    let payload = match response.json::<serde_json::Value>().await {
+        Ok(payload) => payload,
+        Err(error) => {
+            tracing::warn!(%error, "CCR integrations response was not JSON");
+            return;
+        }
+    };
+    let Some(servers) = payload.get("mcpServers").and_then(serde_json::Value::as_array) else {
+        return;
+    };
+    let mut merged = config.mcp_servers.get().clone();
+    for server in servers {
+        let Some(name) = server.get("name").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        if merged.contains_key(name) {
+            continue;
+        }
+        let Some(url) = server.get("url").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let candidate = serde_json::json!({
+            "url": url,
+            "environment_id": "local",
+            "enabled": true
+        });
+        match serde_json::from_value(candidate) {
+            Ok(server) => {
+                merged.insert(name.to_owned(), server);
+            }
+            Err(error) => tracing::warn!(server = name, %error, "CCR MCP definition was ignored"),
+        }
+    }
+    if let Err(error) = config.mcp_servers.set(merged) {
+        tracing::warn!(%error, "CCR MCP definitions failed Codex config validation");
+    }
+}
+
+/// Materialize enabled CCR skills into Codex's user skill directory.
+///
+/// CCR remains the source of truth; the local files are a runtime cache used
+/// by the existing Codex skill provider. Only safe ids and bounded Markdown
+/// content are accepted, so a remote integration cannot escape the skills
+/// directory or fill the disk.
+async fn sync_ccr_skills(config: &Config) {
+    let Some(base_url) = std::env::var_os("CCR_BASE_URL") else {
+        return;
+    };
+    let base_url = base_url.to_string_lossy().trim_end_matches('/').to_owned();
+    if base_url.is_empty() {
+        return;
+    }
+    let mut request = reqwest::Client::new().get(format!("{base_url}/__ccr/integrations/v1"));
+    if let Ok(token) = std::env::var("CCR_TOKEN")
+        && !token.trim().is_empty()
+    {
+        request = request.bearer_auth(token);
+    }
+    let response = match request.send().await {
+        Ok(response) if response.status().is_success() => response,
+        _ => return,
+    };
+    let payload = match response.json::<serde_json::Value>().await {
+        Ok(payload) => payload,
+        Err(_) => return,
+    };
+    let Some(skills) = payload.get("skills").and_then(serde_json::Value::as_array) else {
+        return;
+    };
+    let root = config.codex_home.join("skills").join("ccr");
+    for skill in skills {
+        let Some(id) = skill.get("id").and_then(serde_json::Value::as_str)
+            .filter(|id| is_safe_skill_id(id))
+        else {
+            continue;
+        };
+        let Some(content) = skill.get("content").and_then(serde_json::Value::as_str)
+            .filter(|content| !content.is_empty() && content.len() <= 256 * 1024)
+        else {
+            continue;
+        };
+        let directory = root.join(id);
+        if let Err(error) = tokio::fs::create_dir_all(&directory).await {
+            tracing::warn!(%error, "could not create CCR skill directory");
+            continue;
+        }
+        if let Err(error) = tokio::fs::write(directory.join("SKILL.md"), content).await {
+            tracing::warn!(%error, "could not write CCR skill");
+        }
+    }
+}
+
+fn is_safe_skill_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 80
+        && id != "."
+        && id != ".."
+        && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 async fn build_exec_config<BuildConfig, BuildFuture>(
@@ -1123,6 +1256,8 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
 
     info!("Codex initialized with event: {session_configured:?}");
 
+    let ccr_history = CcrHistory::from_env();
+
     let (interrupt_tx, mut interrupt_rx) = mpsc::unbounded_channel::<()>();
     tokio::spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {
@@ -1147,6 +1282,9 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
             items,
             output_schema,
         } => {
+            if let Some(history) = ccr_history.as_ref() {
+                history.sync_thread(&primary_thread_id_for_span, &config.cwd, &prompt_summary).await;
+            }
             let response: TurnStartResponse = send_request_with_response(
                 &client,
                 ClientRequest::TurnStart {
@@ -1318,12 +1456,78 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
     if let Err(err) = client.shutdown().await {
         warn!("in-process app-server shutdown failed: {err}");
     }
+    if let Some(history) = ccr_history.as_ref()
+        && let Some(message) = event_processor.final_message()
+    {
+        history.sync_message(&primary_thread_id_for_requests, "assistant", message).await;
+    }
     event_processor.print_final_output();
     if error_seen {
         std::process::exit(1);
     }
 
     Ok(())
+}
+
+struct CcrHistory {
+    base_url: String,
+    client: reqwest::Client,
+    token: Option<String>,
+}
+
+impl CcrHistory {
+    fn from_env() -> Option<Self> {
+        let base_url = std::env::var("CCR_BASE_URL").ok()?.trim_end_matches('/').to_owned();
+        if base_url.is_empty() {
+            return None;
+        }
+        Some(Self {
+            base_url,
+            client: reqwest::Client::new(),
+            token: std::env::var("CCR_TOKEN").ok().filter(|value| !value.trim().is_empty()),
+        })
+    }
+
+    async fn sync_thread(&self, thread_id: &str, cwd: &Path, prompt: &str) {
+        let body = serde_json::json!({
+            "id": thread_id,
+            "client": "codex",
+            "projectDirectory": cwd.to_string_lossy(),
+            "title": prompt.chars().take(80).collect::<String>()
+        });
+        if self.post("/threads", body).await.is_ok() {
+            self.sync_message(thread_id, "user", prompt).await;
+        }
+    }
+
+    async fn sync_message(&self, thread_id: &str, role: &str, content: &str) {
+        let body = serde_json::json!({
+            "id": format!("codex_{role}_{}", Uuid::new_v4()),
+            "role": role,
+            "content": [{ "type": "text", "text": content }],
+            "source": "codex"
+        });
+        let _ = self.post(&format!("/threads/{thread_id}/messages"), body).await;
+    }
+
+    async fn post(&self, path: &str, body: serde_json::Value) -> Result<(), ()> {
+        let url = format!("{}{path}", self.base_url);
+        let mut request = self.client.post(url).json(&body);
+        if let Some(token) = &self.token {
+            request = request.bearer_auth(token);
+        }
+        match request.send().await {
+            Ok(response) if response.status().is_success() || response.status().as_u16() == 409 => Ok(()),
+            Ok(response) => {
+                tracing::warn!(status = %response.status(), "CCR history sync failed");
+                Err(())
+            }
+            Err(error) => {
+                tracing::warn!(%error, "CCR history sync failed");
+                Err(())
+            }
+        }
+    }
 }
 
 async fn start_thread(
