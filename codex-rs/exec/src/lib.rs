@@ -6,6 +6,7 @@
 #![deny(clippy::print_stdout)]
 
 mod cli;
+mod continuity_bridge;
 mod event_processor;
 mod event_processor_with_human_output;
 pub(crate) mod event_processor_with_jsonl_output;
@@ -1257,6 +1258,7 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
     info!("Codex initialized with event: {session_configured:?}");
 
     let ccr_history = CcrHistory::from_env();
+    let ccr_continuity = continuity_bridge::ContinuityBridge::from_env();
 
     let (interrupt_tx, mut interrupt_rx) = mpsc::unbounded_channel::<()>();
     tokio::spawn(async move {
@@ -1285,6 +1287,11 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
             if let Some(history) = ccr_history.as_ref() {
                 history.sync_thread(&primary_thread_id_for_span, &config.cwd, &prompt_summary).await;
             }
+            let continuity_context = if let Some(continuity) = ccr_continuity.as_ref() {
+                continuity.bootstrap(&config.cwd).await
+            } else {
+                None
+            };
             let response: TurnStartResponse = send_request_with_response(
                 &client,
                 ClientRequest::TurnStart {
@@ -1297,7 +1304,7 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
                         input: items.into_iter().map(Into::into).collect(),
                         tool_output: None,
                         responsesapi_client_metadata: None,
-                        additional_context: None,
+                        additional_context: continuity_context,
                         environments: None,
                         cwd: Some(default_cwd),
                         runtime_workspace_roots: None,
@@ -1460,6 +1467,16 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
         && let Some(message) = event_processor.final_message()
     {
         history.sync_message(&primary_thread_id_for_requests, "assistant", message).await;
+    }
+    if let Some(continuity) = ccr_continuity.as_ref() {
+        continuity
+            .save(
+                &config.cwd,
+                &prompt_summary,
+                event_processor.final_message(),
+                error_seen,
+            )
+            .await;
     }
     event_processor.print_final_output();
     if error_seen {

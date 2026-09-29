@@ -3139,6 +3139,7 @@ dependencies = [
  "codex-login",
  "codex-model-provider-info",
  "codex-otel",
+ "codex-project-continuity-client",
  "codex-protocol",
  "codex-rollout",
  "codex-utils-absolute-path",
