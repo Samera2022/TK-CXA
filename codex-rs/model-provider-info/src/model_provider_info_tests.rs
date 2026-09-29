@@ -6,6 +6,47 @@ use std::num::NonZeroU64;
 use tempfile::tempdir;
 
 #[test]
+fn built_in_ccr_provider_uses_router_managed_defaults() {
+    let provider = built_in_model_providers(/*openai_base_url*/ None)
+        .remove(CCR_PROVIDER_ID)
+        .expect("CCR provider should be built in");
+
+    assert_eq!(provider.name, CCR_PROVIDER_NAME);
+    assert_eq!(
+        provider.base_url.as_deref().map(ccr_api_base_url),
+        provider.base_url
+    );
+    assert_eq!(provider.env_key.as_deref(), Some("CCR_TOKEN"));
+    assert_eq!(provider.wire_api, WireApi::Responses);
+    assert!(!provider.requires_openai_auth);
+    assert_eq!(
+        ccr_api_base_url(" http://localhost:3456/ "),
+        "http://localhost:3456/v1"
+    );
+    assert_eq!(
+        ccr_api_base_url("http://localhost:3456/v1/"),
+        "http://localhost:3456/v1"
+    );
+}
+
+#[test]
+fn configured_ccr_provider_overrides_built_in_authentication() {
+    let configured = ModelProviderInfo {
+        name: "Configured CCR".into(),
+        base_url: Some("http://localhost:4567/v1".into()),
+        experimental_bearer_token: Some("profile-token".into()),
+        ..Default::default()
+    };
+    let providers = merge_configured_model_providers(
+        built_in_model_providers(/*openai_base_url*/ None),
+        HashMap::from([(CCR_PROVIDER_ID.to_string(), configured.clone())]),
+    )
+    .expect("configured CCR provider should be accepted");
+
+    assert_eq!(providers.get(CCR_PROVIDER_ID), Some(&configured));
+}
+
+#[test]
 fn runtime_internal_metadata_opt_in_is_not_serialized_or_configurable() {
     let trusted = ModelProviderInfo {
         include_internal_metadata: true,

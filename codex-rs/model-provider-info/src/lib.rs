@@ -75,6 +75,10 @@ const OPENAI_PROVIDER_NAME: &str = "OpenAI";
 const OPENAI_ACTOR_AUTHORIZATION_HEADER: &str = "x-openai-actor-authorization";
 pub const OPENAI_PROVIDER_ID: &str = "openai";
 pub const CHATGPT_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
+pub const CCR_PROVIDER_ID: &str = "ccr";
+pub const CCR_ROUTER_MANAGED_MODEL_ID: &str = "router-managed";
+const CCR_PROVIDER_NAME: &str = "CCR Provider";
+const DEFAULT_CCR_BASE_URL: &str = "http://127.0.0.1:3456/v1";
 const AMAZON_BEDROCK_PROVIDER_NAME: &str = "Amazon Bedrock";
 pub const AMAZON_BEDROCK_PROVIDER_ID: &str = "amazon-bedrock";
 const AMAZON_BEDROCK_RUNTIME_PROVIDER_NAME: &str = "Amazon Bedrock Runtime";
@@ -652,6 +656,7 @@ pub fn built_in_model_providers(
 ) -> HashMap<String, ModelProviderInfo> {
     use ModelProviderInfo as P;
     let openai_provider = P::create_openai_provider(openai_base_url);
+    let ccr_provider = create_ccr_provider();
     let amazon_bedrock_provider = P::create_amazon_bedrock_provider(/*aws*/ None);
     let amazon_bedrock_runtime_provider =
         P::create_amazon_bedrock_runtime_provider(/*aws*/ None);
@@ -662,6 +667,7 @@ pub fn built_in_model_providers(
     // `model_providers` in config.toml to add their own providers.
     [
         (OPENAI_PROVIDER_ID, openai_provider),
+        (CCR_PROVIDER_ID, ccr_provider),
         (AMAZON_BEDROCK_PROVIDER_ID, amazon_bedrock_provider),
         (
             AMAZON_BEDROCK_RUNTIME_PROVIDER_ID,
@@ -681,6 +687,49 @@ pub fn built_in_model_providers(
     .collect()
 }
 
+fn create_ccr_provider() -> ModelProviderInfo {
+    let base_url = std::env::var("CCR_BASE_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| ccr_api_base_url(&value))
+        .unwrap_or_else(|| DEFAULT_CCR_BASE_URL.to_string());
+
+    ModelProviderInfo {
+        name: CCR_PROVIDER_NAME.into(),
+        base_url: Some(base_url),
+        model_catalog_url: None,
+        env_key: Some("CCR_TOKEN".into()),
+        env_key_instructions: Some(
+            "Set CCR_TOKEN to the API key for the CCR Codex profile.".into(),
+        ),
+        experimental_bearer_token: None,
+        auth: None,
+        gateway_oauth: None,
+        aws: None,
+        wire_api: WireApi::Responses,
+        query_params: None,
+        http_headers: None,
+        env_http_headers: None,
+        request_max_retries: None,
+        stream_max_retries: None,
+        stream_idle_timeout_ms: None,
+        websocket_connect_timeout_ms: None,
+        requires_openai_auth: false,
+        supports_websockets: false,
+        supports_standalone_web_search: false,
+        include_internal_metadata: false,
+    }
+}
+
+fn ccr_api_base_url(value: &str) -> String {
+    let value = value.trim().trim_end_matches('/');
+    if value.ends_with("/v1") {
+        value.to_string()
+    } else {
+        format!("{value}/v1")
+    }
+}
+
 /// Merge configured providers into the built-in provider catalog.
 ///
 /// Configured providers extend the built-in set. Built-in providers are not
@@ -691,7 +740,12 @@ pub fn merge_configured_model_providers(
     configured_model_providers: HashMap<String, ModelProviderInfo>,
 ) -> Result<HashMap<String, ModelProviderInfo>, String> {
     for (key, mut provider) in configured_model_providers {
-        if matches!(
+        if key == CCR_PROVIDER_ID {
+            provider
+                .validate()
+                .map_err(|message| format!("model_providers.{key} {message}"))?;
+            model_providers.insert(key, provider);
+        } else if matches!(
             key.as_str(),
             AMAZON_BEDROCK_PROVIDER_ID | AMAZON_BEDROCK_RUNTIME_PROVIDER_ID
         ) {

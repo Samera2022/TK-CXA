@@ -635,6 +635,10 @@ impl Session {
             )
         };
 
+        let mut config = config;
+        if config.model_provider_id == codex_model_provider_info::CCR_PROVIDER_ID {
+            config.model = Some(codex_model_provider_info::CCR_ROUTER_MANAGED_MODEL_ID.to_string());
+        }
         let mut config = Arc::new(config);
         let refresh_strategy = if session_source.is_non_root_agent() {
             codex_models_manager::manager::RefreshStrategy::Offline
