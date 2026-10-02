@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "aws-auth",
+    "ccr-integration",
     "analytics",
     "agent-graph-store",
     "agent-message-board-client",
