@@ -8,7 +8,6 @@ use codex_api::ApiError;
 use codex_api::Provider;
 use codex_api::SharedAuthProvider;
 use codex_api::TransportError;
-use codex_api::is_azure_responses_provider;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
 use codex_login::GatewayAuthManager;
@@ -419,9 +418,8 @@ impl ModelProvider for ConfiguredModelProvider {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        let remote_compaction = if self.info.is_openai()
-            || is_azure_responses_provider(&self.info.name, self.info.base_url.as_deref())
-        {
+        // Enable remote compaction for any provider using the Responses API wire protocol
+        let remote_compaction = if self.info.wire_api == codex_model_provider_info::WireApi::Responses {
             RemoteCompactionSupport::V2
         } else {
             RemoteCompactionSupport::Unsupported

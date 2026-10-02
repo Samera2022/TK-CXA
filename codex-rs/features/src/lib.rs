@@ -203,6 +203,8 @@ pub enum Feature {
     /// Retry eligible bootstrap requests through the system proxy after normal routing fails.
     SystemProxyFallback,
     /// Enable collab tools.
+    /// Enable CCR model switching tools.
+    CcrModelSwitching,
     Collab,
     /// Enable task-path-based multi-agent routing.
     MultiAgentV2,
@@ -1862,6 +1864,12 @@ pub const FEATURES: &[FeatureSpec] = &[
         key: "workspace_dependencies",
         stage: Stage::Stable,
         default_enabled: true,
+    FeatureSpec {
+        id: Feature::CcrModelSwitching,
+        key: "ccr_model_switching",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
     },
 ];
 

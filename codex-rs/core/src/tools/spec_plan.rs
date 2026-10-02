@@ -1295,6 +1295,14 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, registry: &mut Tool
     }
 }
 
+    // CCR model switching tools
+    if let Some(ccr_url) = &turn_context.config.ccr_base_url {
+        if features.enabled(Feature::CcrModelSwitching) {
+            registry.add(crate::tools::handlers::ccr_tools::CcrSwitchModelHandler::new(ccr_url.as_str()));
+            registry.add(crate::tools::handlers::ccr_tools::CcrListModelsHandler::new(ccr_url.as_str()));
+        }
+    }
+
 #[instrument(level = "trace", skip_all)]
 fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut ToolRegistry) {
     let turn_context = context.turn_context;
