@@ -124,6 +124,36 @@ impl CcrModelSwitcher {
 
         Ok(budget_response)
     }
+
+    /// Confirm budget usage decision
+    pub async fn confirm_budget(&self, action: &str, model: &str, target_model: Option<&str>) -> Result<BudgetConfirmResponse> {
+        let url = format!("{}/__ccr/model-control/v1/budget-confirm", self.config.base_url);
+
+        let request_body = BudgetConfirmRequest {
+            session_key: self.session_key(),
+            model: model.to_string(),
+            action: action.to_string(),
+            target_model: target_model.map(|s| s.to_string()),
+        };
+
+        let mut request = self.client.post(&url).json(&request_body);
+
+        if let Some(api_key) = &self.config.api_key {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        let response = request
+            .send()
+            .await
+            .context("Failed to send budget confirm request")?;
+
+        let confirm_response: BudgetConfirmResponse = response
+            .json()
+            .await
+            .context("Failed to parse budget confirm response")?;
+
+        Ok(confirm_response)
+    }
 }
 
 #[cfg(test)]

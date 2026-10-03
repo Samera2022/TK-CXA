@@ -246,3 +246,76 @@ mod tests {
         assert!(def["description"].as_str().is_some());
     }
 }
+
+/// Arguments for budget confirmation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BudgetConfirmArgs {
+    pub action: String,    // "continue", "switch", or "stop"
+    pub model: String,
+    pub target_model: Option<String>,
+}
+
+/// Tool handler for CCR budget confirmation
+pub struct CcrBudgetConfirmTool {
+    switcher: Arc<CcrModelSwitcher>,
+}
+
+impl CcrBudgetConfirmTool {
+    pub fn new(switcher: Arc<CcrModelSwitcher>) -> Self {
+        Self { switcher }
+    }
+
+    pub async fn execute(&self, args: BudgetConfirmArgs) -> Result<String> {
+        let target = args.target_model.as_deref();
+        let response = self
+            .switcher
+            .confirm_budget(&args.action, &args.model, target)
+            .await?;
+
+        if response.stopped.unwrap_or(false) {
+            Ok(format!(
+                "⛔ Task execution stopped.\n\n{}",
+                response.message
+            ))
+        } else if let Some(new_model) = response.new_model {
+            Ok(format!(
+                "✓ Model switched successfully.\n\n\
+                 Previous model: {}\n\
+                 New model: {}\n\n\
+                 {}",
+                args.model, new_model, response.message
+            ))
+        } else {
+            Ok(format!("✓ Continuing with current model.\n\n{}", response.message))
+        }
+    }
+
+    pub fn tool_definition() -> serde_json::Value {
+        serde_json::json!({
+            "name": "ccr_budget_confirm",
+            "description": "Respond to a budget limit warning from CCR. \
+                           When CCR indicates that token budget is running low, use this tool to decide whether to: \
+                           (1) continue with the current model, (2) switch to a more cost-effective model, or (3) stop the task. \
+                           This is typically called automatically when CCR sends a budget warning.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["continue", "switch", "stop"],
+                        "description": "'continue' to keep using the current model, 'switch' to change models, 'stop' to halt execution"
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "The current model that triggered the budget warning"
+                    },
+                    "target_model": {
+                        "type": "string",
+                        "description": "Required if action is 'switch'. The model ID to switch to (e.g., 'gpt-5.6-sol', 'deepseek-v4-flash')"
+                    }
+                },
+                "required": ["action", "model"]
+            }
+        })
+    }
+}

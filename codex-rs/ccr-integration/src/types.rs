@@ -99,3 +99,25 @@ impl Default for CcrConfig {
         }
     }
 }
+
+// Budget confirmation types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BudgetConfirmRequest {
+    #[serde(rename = "sessionKey")]
+    pub session_key: String,
+    pub model: String,
+    pub action: String, // "continue", "switch", or "stop"
+    #[serde(rename = "targetModel", skip_serializing_if = "Option::is_none")]
+    pub target_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BudgetConfirmResponse {
+    pub success: bool,
+    pub message: String,
+    pub action: String,
+    #[serde(rename = "newModel", skip_serializing_if = "Option::is_none")]
+    pub new_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stopped: Option<bool>,
+}
