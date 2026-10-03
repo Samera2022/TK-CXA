@@ -7,5 +7,7 @@ pub mod tools;
 pub mod types;
 
 pub use model_switching::CcrModelSwitcher;
-pub use tools::{CcrListModelsTool, CcrSwitchModelTool, SwitchModelArgs};
+pub use tools::{
+    CcrListModelsTool, CcrQueryBudgetTool, CcrSwitchModelTool, SwitchModelArgs,
+};
 pub use types::*;

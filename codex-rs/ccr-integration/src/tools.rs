@@ -28,28 +28,46 @@ impl CcrSwitchModelTool {
 
         match response {
             SwitchModelResponse::Success {
-                model,
+                current_model,
                 previous_model,
+                budget_state,
                 ..
             } => {
                 let prev = previous_model
                     .map(|m| format!(" (was: {})", m))
                     .unwrap_or_default();
-                Ok(format!("Successfully switched to model: {}{}", model, prev))
+                Ok(format!(
+                    "Successfully switched to model: {}{}\n\nBudget state:\n  Model: {}\n  Budget: {} tokens\n  Used: {} tokens ({:.1}%)\n  Remaining: {} tokens",
+                    current_model, prev,
+                    budget_state.model,
+                    budget_state.budget,
+                    budget_state.used,
+                    budget_state.percentage,
+                    budget_state.remaining
+                ))
             }
             SwitchModelResponse::Error {
-                message,
+                error,
                 available_models,
                 ..
             } => {
                 let models_list = available_models
                     .iter()
-                    .map(|m| format!("  - {} ({})", m.id, m.display_name))
+                    .map(|m| {
+                        let provider = m.provider.as_deref().unwrap_or("unknown");
+                        let ctx = m
+                            .limits
+                            .as_ref()
+                            .and_then(|l| l.context_tokens)
+                            .map(|c| format!(", {} tokens", c))
+                            .unwrap_or_default();
+                        format!("  - {} ({}: {}{})", m.display_name, m.id, provider, ctx)
+                    })
                     .collect::<Vec<_>>()
                     .join("\n");
                 Ok(format!(
                     "Model switch failed: {}\n\nAvailable models:\n{}",
-                    message, models_list
+                    error, models_list
                 ))
             }
         }
@@ -61,13 +79,15 @@ impl CcrSwitchModelTool {
             "description": "Request CCR to switch the current model to a specific one. \
                            If the model is not found, returns the list of available models. \
                            Use this when you need capabilities of a different model \
-                           (e.g., larger context, better reasoning, vision support).",
+                           (e.g., larger context, better reasoning, vision support). \
+                           IMPORTANT: Model IDs should be simple names like 'gpt-5.6-sol' or 'claude-opus-5', \
+                           NOT prefixed with provider (do not use 'openai/' or 'anthropic/' prefixes).",
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "model": {
                         "type": "string",
-                        "description": "The model ID to switch to (e.g., 'openai/gpt-5.6-sol', 'anthropic/claude-opus-5')"
+                        "description": "The model ID to switch to (e.g., 'gpt-5.6-sol', 'claude-opus-5', 'deepseek-v4')"
                     },
                     "reason": {
                         "type": "string",
@@ -99,14 +119,34 @@ impl CcrListModelsTool {
 
         let mut output = String::from("Available models from CCR:\n\n");
         for model in models {
+            let provider = model.provider.as_deref().unwrap_or("unknown");
             output.push_str(&format!("**{}** ({})\n", model.display_name, model.id));
-            output.push_str(&format!("  Provider: {}\n", model.provider));
-            if let Some(ctx) = model.context_tokens {
-                output.push_str(&format!("  Context: {} tokens\n", ctx));
+            output.push_str(&format!("  Provider: {}\n", provider));
+            
+            if let Some(limits) = &model.limits {
+                if let Some(ctx) = limits.context_tokens {
+                    output.push_str(&format!("  Context: {} tokens\n", ctx));
+                }
+                if let Some(max_out) = limits.max_tokens {
+                    output.push_str(&format!("  Max output: {} tokens\n", max_out));
+                }
             }
+            
             if let Some(caps) = &model.capabilities {
                 if !caps.is_empty() {
-                    output.push_str(&format!("  Capabilities: {}\n", caps.join(", ")));
+                    let cap_names: Vec<String> = caps
+                        .iter()
+                        .filter_map(|(k, v)| {
+                            if v.as_bool() == Some(true) {
+                                Some(k.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    if !cap_names.is_empty() {
+                        output.push_str(&format!("  Capabilities: {}\n", cap_names.join(", ")));
+                    }
                 }
             }
             output.push('\n');
@@ -121,6 +161,55 @@ impl CcrListModelsTool {
             "description": "List all available models from CCR (Claude Code Router). \
                            Shows model IDs, providers, context sizes, and capabilities. \
                            Use this to discover what models you can switch to.",
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        })
+    }
+}
+
+/// Tool handler for querying budget state
+pub struct CcrQueryBudgetTool {
+    switcher: Arc<CcrModelSwitcher>,
+}
+
+impl CcrQueryBudgetTool {
+    pub fn new(switcher: Arc<CcrModelSwitcher>) -> Self {
+        Self { switcher }
+    }
+
+    pub async fn execute(&self) -> Result<String> {
+        let budget = self.switcher.query_budget().await?;
+
+        Ok(format!(
+            "Budget state for session '{}':\n\n\
+             Model: {}\n\
+             Budget: {} tokens\n\
+             Used: {} tokens ({:.1}%)\n\
+             Remaining: {} tokens\n\n\
+             {}",
+            budget.session_key,
+            budget.model,
+            budget.budget,
+            budget.used,
+            budget.percentage,
+            budget.remaining,
+            if budget.percentage > 80.0 {
+                "⚠️  Warning: Budget usage is high!"
+            } else {
+                "✓ Budget is within normal range"
+            }
+        ))
+    }
+
+    pub fn tool_definition() -> serde_json::Value {
+        serde_json::json!({
+            "name": "ccr_query_budget",
+            "description": "Query the current token budget state for this session. \
+                           Shows how many tokens have been used, remaining budget, and usage percentage. \
+                           Use this to check if you're approaching budget limits.",
             "input_schema": {
                 "type": "object",
                 "properties": {},
@@ -147,6 +236,13 @@ mod tests {
     fn test_list_models_tool_definition() {
         let def = CcrListModelsTool::tool_definition();
         assert_eq!(def["name"], "ccr_list_models");
+        assert!(def["description"].as_str().is_some());
+    }
+
+    #[test]
+    fn test_query_budget_tool_definition() {
+        let def = CcrQueryBudgetTool::tool_definition();
+        assert_eq!(def["name"], "ccr_query_budget");
         assert!(def["description"].as_str().is_some());
     }
 }
