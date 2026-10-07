@@ -431,6 +431,12 @@ pub fn process_responses_event(
                 }
             }
             if let Some(resp_val) = event.response {
+                if let Some(error) = gateway_error_response(&resp_val) {
+                    return Err(ResponsesEventError::Api(ApiError::Stream(error)));
+                }
+                if let Some(error) = unfinished_output_item_error(&resp_val) {
+                    return Err(ResponsesEventError::Api(ApiError::Stream(error)));
+                }
                 let metadata = resp_val
                     .get("usage")
                     .filter(|usage| !usage.is_null())
@@ -499,6 +505,62 @@ pub fn process_responses_event(
     }
 
     Ok(None)
+}
+
+fn unfinished_output_item_error(response: &Value) -> Option<String> {
+    let unfinished = response
+        .get("output")
+        .and_then(Value::as_array)
+        .is_some_and(|output| {
+            output.iter().any(|item| {
+                item.get("status")
+                    .and_then(Value::as_str)
+                    .is_some_and(|status| status == "in_progress")
+            })
+        });
+    if !unfinished {
+        return None;
+    }
+
+    let detail = response
+        .get("output_text")
+        .and_then(Value::as_str)
+        .filter(|text| !text.trim().is_empty())
+        .unwrap_or("response contained an unfinished output item");
+    Some(format!(
+        "response completed with unfinished output item: {detail}"
+    ))
+}
+
+fn gateway_error_response(response: &Value) -> Option<String> {
+    let error = response.get("error").filter(|value| !value.is_null());
+    let gateway_item = response
+        .get("output")
+        .and_then(Value::as_array)
+        .and_then(|output| {
+            output.iter().find(|item| {
+                item.get("id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| id.starts_with("msg_gateway_error_"))
+            })
+        });
+    let detail = error
+        .and_then(|value| value.get("message").and_then(Value::as_str))
+        .or_else(|| {
+            gateway_item.and_then(|item| {
+                item.get("content")
+                    .and_then(Value::as_array)
+                    .and_then(|content| {
+                        content
+                            .iter()
+                            .find_map(|part| part.get("text").and_then(Value::as_str))
+                    })
+            })
+        })
+        .filter(|text| !text.trim().is_empty())?;
+    Some(format!(
+        "gateway returned an error as a completed response: {detail}"
+    ))
 }
 
 #[cfg(test)]
@@ -793,6 +855,62 @@ mod tests {
             }
             other => panic!("unexpected third event: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn rejects_completed_response_with_unfinished_output_item() {
+        let completed = json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp1",
+                "output_text": "Upstream error server_error: Service temporarily unavailable. Please retry.",
+                "output": [{
+                    "type": "function_call",
+                    "status": "in_progress"
+                }]
+            }
+        })
+        .to_string();
+        let sse = format!("event: response.completed\ndata: {completed}\n\n");
+
+        let events = collect_events(&[sse.as_bytes()]).await;
+
+        assert_matches!(
+            &events[..],
+            [Err(ApiError::Stream(message))]
+                if message.contains("unfinished output item")
+                    && message.contains("Service temporarily unavailable")
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_completed_response_with_gateway_error_item() {
+        let completed = json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp1",
+                "output": [{
+                    "id": "msg_gateway_error_1",
+                    "type": "message",
+                    "status": "completed",
+                    "content": [{
+                        "type": "output_text",
+                        "text": "Upstream error thinking_signature_invalid: encrypted content could not be verified."
+                    }]
+                }]
+            }
+        })
+        .to_string();
+        let sse = format!("event: response.completed\ndata: {completed}\n\n");
+
+        let events = collect_events(&[sse.as_bytes()]).await;
+
+        assert_matches!(
+            &events[..],
+            [Err(ApiError::Stream(message))]
+                if message.contains("gateway returned an error")
+                    && message.contains("thinking_signature_invalid")
+        );
     }
 
     #[test]
