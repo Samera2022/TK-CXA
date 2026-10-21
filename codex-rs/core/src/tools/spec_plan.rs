@@ -1293,15 +1293,27 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, registry: &mut Tool
             include_environment_id,
         }));
     }
-}
-
     // CCR model switching tools
     if let Some(ccr_url) = &turn_context.config.ccr_base_url {
         if features.enabled(Feature::CcrModelSwitching) {
-            registry.add(crate::tools::handlers::ccr_tools::CcrSwitchModelHandler::new(ccr_url.as_str()));
-            registry.add(crate::tools::handlers::ccr_tools::CcrListModelsHandler::new(ccr_url.as_str()));
+            registry.add(
+                crate::tools::handlers::ccr_tools::CcrSwitchModelHandler::new(ccr_url.as_str()),
+            );
+            registry.add(
+                crate::tools::handlers::ccr_tools::CcrListModelsHandler::new(ccr_url.as_str()),
+            );
+            registry.add(crate::tools::handlers::ccr_tools::CcrGetBudgetHandler::new(
+                ccr_url.as_str(),
+            ));
+            registry.add(
+                crate::tools::handlers::ccr_tools::CcrBudgetConfirmHandler::new(ccr_url.as_str()),
+            );
+            registry.add(
+                crate::tools::handlers::ccr_tools::CcrSelectRoleHandler::new(ccr_url.as_str()),
+            );
         }
     }
+}
 
 #[instrument(level = "trace", skip_all)]
 fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut ToolRegistry) {

@@ -254,12 +254,14 @@ fn populate_merged_regular_fields_with_sources(
         additional_developer_instructions,
         guardian_policy_config,
         guardian_extra_policy,
+        ccr_base_url,
     } = requirements;
 
     set_sourced!(allowed_login_methods, &["allowed_login_methods"]);
     set_sourced!(allowed_chatgpt_workspaces, &["allowed_chatgpt_workspaces"]);
     set_sourced!(cli_auth_credentials_store, &["cli_auth_credentials_store"]);
     set_sourced!(chatgpt_base_url, &["chatgpt_base_url"]);
+    set_sourced!(ccr_base_url, &["ccr_base_url"]);
     set_sourced!(sqlite_home, &["sqlite_home"]);
     set_sourced!(log_dir, &["log_dir"]);
     set_sourced!(model_catalog_json, &["model_catalog_json"]);

@@ -126,8 +126,16 @@ impl CcrModelSwitcher {
     }
 
     /// Confirm budget usage decision
-    pub async fn confirm_budget(&self, action: &str, model: &str, target_model: Option<&str>) -> Result<BudgetConfirmResponse> {
-        let url = format!("{}/__ccr/model-control/v1/budget-confirm", self.config.base_url);
+    pub async fn confirm_budget(
+        &self,
+        action: &str,
+        model: &str,
+        target_model: Option<&str>,
+    ) -> Result<BudgetConfirmResponse> {
+        let url = format!(
+            "{}/__ccr/model-control/v1/budget-confirm",
+            self.config.base_url
+        );
 
         let request_body = BudgetConfirmRequest {
             session_key: self.session_key(),
@@ -163,7 +171,11 @@ mod tests {
     #[test]
     fn test_session_key_generation() {
         let config = CcrConfig::default();
-        let switcher = CcrModelSwitcher::new(config, "codex".to_string(), Some("test-session".to_string()));
+        let switcher = CcrModelSwitcher::new(
+            config,
+            "codex".to_string(),
+            Some("test-session".to_string()),
+        );
         assert_eq!(switcher.session_key(), "codex:test-session");
 
         let config2 = CcrConfig::default();

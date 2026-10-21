@@ -165,6 +165,7 @@ pub struct ConfigRequirements {
     pub allowed_chatgpt_workspaces: Option<Sourced<Vec<String>>>,
     pub cli_auth_credentials_store: Option<Sourced<AuthCredentialsStoreMode>>,
     pub chatgpt_base_url: Option<Sourced<String>>,
+    pub ccr_base_url: Option<Sourced<String>>,
     pub sqlite_home: Option<Sourced<AbsolutePathBuf>>,
     pub log_dir: Option<Sourced<AbsolutePathBuf>>,
     pub model_catalog_json: Option<Sourced<AbsolutePathBuf>>,
@@ -210,6 +211,7 @@ impl Default for ConfigRequirements {
             allowed_chatgpt_workspaces: None,
             cli_auth_credentials_store: None,
             chatgpt_base_url: None,
+            ccr_base_url: None,
             sqlite_home: None,
             log_dir: None,
             model_catalog_json: None,
@@ -1031,6 +1033,7 @@ pub struct ConfigRequirementsToml {
     pub allowed_chatgpt_workspaces: Option<Vec<String>>,
     pub cli_auth_credentials_store: Option<AuthCredentialsStoreMode>,
     pub chatgpt_base_url: Option<String>,
+    pub ccr_base_url: Option<String>,
     pub sqlite_home: Option<AbsolutePathBuf>,
     pub log_dir: Option<AbsolutePathBuf>,
     pub model_catalog_json: Option<AbsolutePathBuf>,
@@ -1142,6 +1145,7 @@ pub struct ConfigRequirementsWithSources {
     pub allowed_chatgpt_workspaces: Option<Sourced<Vec<String>>>,
     pub cli_auth_credentials_store: Option<Sourced<AuthCredentialsStoreMode>>,
     pub chatgpt_base_url: Option<Sourced<String>>,
+    pub ccr_base_url: Option<Sourced<String>>,
     pub sqlite_home: Option<Sourced<AbsolutePathBuf>>,
     pub log_dir: Option<Sourced<AbsolutePathBuf>>,
     pub model_catalog_json: Option<Sourced<AbsolutePathBuf>>,
@@ -1244,6 +1248,7 @@ impl ConfigRequirementsWithSources {
             additional_developer_instructions: _,
             guardian_policy_config: _,
             guardian_extra_policy: _,
+            ..
         } = &other;
 
         let mut other = other;
@@ -1270,6 +1275,7 @@ impl ConfigRequirementsWithSources {
                 allowed_chatgpt_workspaces,
                 cli_auth_credentials_store,
                 chatgpt_base_url,
+            ccr_base_url,
                 sqlite_home,
                 log_dir,
                 model_catalog_json,
@@ -1356,6 +1362,7 @@ impl ConfigRequirementsWithSources {
             allowed_chatgpt_workspaces,
             cli_auth_credentials_store,
             chatgpt_base_url,
+            ccr_base_url: _,
             sqlite_home,
             log_dir,
             model_catalog_json,
@@ -1441,6 +1448,7 @@ impl ConfigRequirementsWithSources {
                 .map(|sourced| sourced.value),
             guardian_policy_config: guardian_policy_config.map(|sourced| sourced.value),
             guardian_extra_policy: guardian_extra_policy.map(|sourced| sourced.value),
+            ccr_base_url: None,
         }
     }
 }
@@ -1732,6 +1740,7 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             allowed_chatgpt_workspaces,
             cli_auth_credentials_store,
             chatgpt_base_url,
+            ccr_base_url,
             sqlite_home,
             log_dir,
             model_catalog_json,
@@ -2102,6 +2111,7 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             allowed_chatgpt_workspaces,
             cli_auth_credentials_store,
             chatgpt_base_url,
+            ccr_base_url,
             sqlite_home,
             log_dir,
             model_catalog_json,
@@ -2266,6 +2276,7 @@ mod tests {
             allowed_chatgpt_workspaces,
             cli_auth_credentials_store,
             chatgpt_base_url,
+            ccr_base_url,
             sqlite_home,
             log_dir,
             model_catalog_json,

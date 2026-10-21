@@ -10280,6 +10280,7 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
         allowed_chatgpt_workspaces: None,
         cli_auth_credentials_store: None,
         chatgpt_base_url: None,
+        ccr_base_url: None,
         sqlite_home: None,
         log_dir: None,
         model_catalog_json: None,

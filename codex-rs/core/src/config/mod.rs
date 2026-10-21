@@ -1013,6 +1013,8 @@ pub struct Config {
     /// Base URL for requests to ChatGPT (as opposed to the OpenAI API).
     pub chatgpt_base_url: String,
 
+    /// Optional base URL for CCR (Claude Code Router) API.
+    pub ccr_base_url: Option<String>,
     /// Whether Codex-owned clients should respect host system proxy settings.
     pub respect_system_proxy: bool,
 
@@ -3311,6 +3313,7 @@ impl Config {
             additional_developer_instructions: _,
             guardian_policy_config_source: _,
             guardian_extra_policy_source: _,
+            ..
         } = config_layer_stack.requirements().clone();
 
         // Destructure ConfigOverrides fully to ensure all overrides are applied.
@@ -4401,6 +4404,7 @@ impl Config {
             chatgpt_base_url: cfg
                 .chatgpt_base_url
                 .unwrap_or("https://chatgpt.com/backend-api/".to_string()),
+            ccr_base_url: cfg.ccr_base_url.clone(),
             respect_system_proxy,
             apps_mcp_product_sku: cfg.apps_mcp_product_sku.clone(),
             responses_api_metadata: cfg.responses_api_metadata.unwrap_or_default(),

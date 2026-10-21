@@ -6,10 +6,13 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = CcrConfig::default();
-    
+
     println!("CCR Config:");
     println!("  Base URL: {}", config.base_url);
-    println!("  API Key: {}", config.api_key.as_deref().unwrap_or("<not set>"));
+    println!(
+        "  API Key: {}",
+        config.api_key.as_deref().unwrap_or("<not set>")
+    );
     println!();
 
     let switcher = Arc::new(CcrModelSwitcher::new(

@@ -1864,12 +1864,12 @@ pub const FEATURES: &[FeatureSpec] = &[
         key: "workspace_dependencies",
         stage: Stage::Stable,
         default_enabled: true,
+    },
     FeatureSpec {
         id: Feature::CcrModelSwitching,
         key: "ccr_model_switching",
         stage: Stage::UnderDevelopment,
         default_enabled: false,
-    },
     },
 ];
 

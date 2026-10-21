@@ -24,7 +24,10 @@ impl CcrSwitchModelTool {
     }
 
     pub async fn execute(&self, args: SwitchModelArgs) -> Result<String> {
-        let response = self.switcher.switch_model(&args.model, &args.reason).await?;
+        let response = self
+            .switcher
+            .switch_model(&args.model, &args.reason)
+            .await?;
 
         match response {
             SwitchModelResponse::Success {
@@ -122,7 +125,7 @@ impl CcrListModelsTool {
             let provider = model.provider.as_deref().unwrap_or("unknown");
             output.push_str(&format!("**{}** ({})\n", model.display_name, model.id));
             output.push_str(&format!("  Provider: {}\n", provider));
-            
+
             if let Some(limits) = &model.limits {
                 if let Some(ctx) = limits.context_tokens {
                     output.push_str(&format!("  Context: {} tokens\n", ctx));
@@ -131,7 +134,7 @@ impl CcrListModelsTool {
                     output.push_str(&format!("  Max output: {} tokens\n", max_out));
                 }
             }
-            
+
             if let Some(caps) = &model.capabilities {
                 if !caps.is_empty() {
                     let cap_names: Vec<String> = caps
@@ -250,7 +253,7 @@ mod tests {
 /// Arguments for budget confirmation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BudgetConfirmArgs {
-    pub action: String,    // "continue", "switch", or "stop"
+    pub action: String, // "continue", "switch", or "stop"
     pub model: String,
     pub target_model: Option<String>,
 }
@@ -286,7 +289,10 @@ impl CcrBudgetConfirmTool {
                 args.model, new_model, response.message
             ))
         } else {
-            Ok(format!("✓ Continuing with current model.\n\n{}", response.message))
+            Ok(format!(
+                "✓ Continuing with current model.\n\n{}",
+                response.message
+            ))
         }
     }
 
